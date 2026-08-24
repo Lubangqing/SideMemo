@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "侧边便签 v1.0",
+  "version": "1.0.0",
+  "description": "v1.0 纯文本版：支持多行文本便签、编辑/复制/删除、一键粘贴到网页输入框。",
+  "action": { "default_title": "打开侧边便签 v1.0" },
+  "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "permissions": ["sidePanel", "storage", "activeTab", "scripting", "clipboardWrite"],
+  "host_permissions": ["<all_urls>"]
+}

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>侧边便签 v1.0</title>
+  <style>
+    /* ========== 全局重置与基础样式 ========== */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                   "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      color: #333;
+      background: #f5f7fa;
+    }
+    /* ========== 整体布局 ========== */
+    .app { display: flex; flex-direction: column; height: 100vh; padding: 12px; gap: 12px; }
+    /* ========== 头部标题 ========== */
+    .app-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 8px; border-bottom: 1px solid #e4e7ed;
+    }
+    .app-header h1 { font-size: 16px; font-weight: 600; color: #1f2937; }
+    .app-header .count { font-size: 12px; color: #909399; }
+    /* ========== 输入区 ========== */
+    .input-section { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+    #noteInput {
+      width: 100%;
+      /* 基础最小高度≈6行；实际高度由 JS 控制（自适应） */
+      min-height: 156px;
+      max-height: 280px;
+      padding: 10px 12px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #1f2937;
+      background: #fff;
+      border: 1px solid #dcdfe6;
+      border-radius: 8px;
+      outline: none;
+      overflow: hidden;    /* 自适应高度期内不出现滚动条；超过 max-height 时由 JS 切回 auto */
+      resize: none;        /* 高度由 JS 自动控制，用户不需要手动拖拽 */
+      transition: border-color 0.2s, box-shadow 0.2s, height 0.08s ease;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+    #noteInput:focus { border-color: #409eff; box-shadow: 0 0 0 3px rgba(64,158,255,0.15); }
+    .input-section .actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .btn {
+      padding: 7px 16px; font-size: 13px; font-weight: 500;
+      border: none; border-radius: 6px; cursor: pointer;
+      transition: background 0.2s, opacity 0.2s; font-family: inherit;
+    }
+    .btn-primary { background: #409eff; color: #fff; }
+    .btn-primary:hover { background: #337ecc; }
+    .btn-primary:active { opacity: 0.85; }
+    .btn-ghost { background: #fff; color: #606266; border: 1px solid #dcdfe6; }
+    .btn-ghost:hover { background: #f0f2f5; }
+    /* ========== 便签列表 ========== */
+    .list-section { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .list-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 2px 8px; }
+    .list-header h2 { font-size: 13px; font-weight: 600; color: #606266; }
+    .list-container { flex: 1; overflow-y: auto; padding-right: 4px; }
+    .list-container::-webkit-scrollbar { width: 6px; }
+    .list-container::-webkit-scrollbar-thumb { background: #c0c4cc; border-radius: 3px; }
+    /* 空状态 */
+    .empty-state { padding: 40px 12px; text-align: center; color: #909399; font-size: 13px; }
+    .empty-state .icon { font-size: 36px; margin-bottom: 10px; opacity: 0.5; }
+    /* ========== 单条便签卡片 ========== */
+    .note-item {
+      background: #fff; border: 1px solid #ebeef5; border-radius: 8px;
+      padding: 10px 12px; margin-bottom: 10px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .note-item:hover { border-color: #409eff; box-shadow: 0 2px 8px rgba(64,158,255,0.12); }
+    .note-content {
+      font-size: 13.5px; line-height: 1.6; color: #1f2937;
+      cursor: pointer; padding: 4px 2px; border-radius: 4px;
+      transition: background 0.15s;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .note-content:hover { background: rgba(64,158,255,0.06); }
+    .note-content::after {
+      content: "（点击粘贴到网页光标处）"; display: block; margin-top: 4px;
+      font-size: 11px; color: #909399; opacity: 0; transition: opacity 0.15s; pointer-events: none;
+    }
+    .note-item:hover .note-content::after { opacity: 1; }
+    .note-meta {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 8px; padding-top: 8px; border-top: 1px dashed #ebeef5;
+    }
+    .note-time { font-size: 11px; color: #909399; }
+    .note-actions { display: flex; gap: 6px; }
+    .btn-small { padding: 4px 10px; font-size: 12px; border-radius: 4px; }
+    .btn-edit   { background: #f0ebfc; color: #7a4cff; border: 1px solid #d4c2ff; }
+    .btn-edit:hover { background: #e1d6fa; }
+    .btn-copy   { background: #ecf5ff; color: #409eff; border: 1px solid #b3d8ff; }
+    .btn-copy:hover { background: #d9ecff; }
+    .btn-delete { background: #fef0f0; color: #f56c6c; border: 1px solid #fbc4c4; }
+    .btn-delete:hover { background: #fde2e2; }
+    /* 正在编辑的卡片高亮 */
+    .note-item.editing {
+      border-color: #7a4cff;
+      background: linear-gradient(180deg, #fbfaff 0%, #ffffff 50%);
+      box-shadow: 0 3px 12px rgba(122,76,255,0.18);
+    }
+    .note-item.editing::before {
+      content: "✏️ 编辑中"; display: inline-block; margin-bottom: 6px;
+      padding: 2px 8px; font-size: 11px; color: #7a4cff;
+      background: #f0ebfc; border-radius: 999px;
+    }
+    /* 编辑模式提示条 */
+    .edit-hint {
+      display: none; margin-bottom: 8px; padding: 8px 10px;
+      font-size: 12px; color: #5a37d6; background: #f4efff;
+      border: 1px dashed #c6b2ff; border-radius: 6px; line-height: 1.5;
+    }
+    .edit-hint.show { display: block; }
+    .edit-hint b { color: #7a4cff; }
+    /* ========== Toast 提示 ========== */
+    .toast {
+      position: fixed; top: 20px; left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      padding: 8px 16px; background: rgba(0,0,0,0.75); color: #fff;
+      font-size: 13px; border-radius: 6px; opacity: 0;
+      pointer-events: none; transition: opacity 0.25s, transform 0.25s; z-index: 9999;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <h1>📝 侧边便签 <small style="color:#909399;font-weight:400;font-size:12px;">v1.0 纯文本</small></h1>
+      <span class="count" id="countText">共 0 条</span>
+    </header>
+
+    <section class="input-section">
+      <div class="edit-hint" id="editHint">
+        <b>✏️ 编辑模式</b>：修改完成后点击「<b>更新</b>」保存；或「<b>取消</b>」放弃修改。
+      </div>
+      <textarea
+        id="noteInput"
+        placeholder="输入便签内容，点击「保存」存入列表…&#10;&#10;提示：保存后，点击任意一条便签可一键粘贴到当前网页光标所在的输入框。"
+      ></textarea>
+      <div class="actions">
+        <button class="btn btn-ghost" id="clearBtn">清空</button>
+        <button class="btn btn-primary" id="saveBtn">保存</button>
+      </div>
+    </section>
+
+    <section class="list-section">
+      <div class="list-header"><h2>我的便签</h2></div>
+      <div class="list-container" id="listContainer"></div>
+    </section>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
